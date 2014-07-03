@@ -8,7 +8,7 @@ module ResultsHelpers
       if arange.count < 2
         arange[0] = arange[1] = range
       end
-      results = filter.nil? ? table.where("peringkat_jumlah_suara between #{arange[0]} and #{arange[1]}") : table.where("#{field} between #{arange[0]} and #{arange[1]}")
+      results = filter.nil? ? table.where("peringkat_jumlah_suara between ? and ?", arange[0], arange[1]) : table.where("#{field} between ? and ?", arange[0], arange[1])
     else
       results = table
     end
@@ -29,22 +29,49 @@ module Pemilu
       get do
         results = Array.new
         
-        # Prepare conditions based on params
-        valid_params = {          
-          partai: 'id_partai',          
-        }
-        conditions = Hash.new
-        valid_params.each_pair do |key, value|
-          conditions[value.to_sym] = params[key.to_sym] unless params[key.to_sym].blank?
-        end
-        
         # Set default limit
         limit = (params[:limit].to_i == 0 || params[:limit].empty?) ? 1000 : params[:limit]
 
-        search = ["id_dapil LIKE ?", "#{params[:provinsi]}%"]
+        search = ["substr(id_dapil,1,2) = ?", "#{params[:provinsi]}"]
         
-        if (params[:area].downcase == "provinsi")
-          get_data_by_province_or_dapil("Province", params[:filter], params[:range])
+        if (params[:area].nil?)
+          get_data_by_province_or_dapil("Dapil", params[:filter], params[:range])
+          .limit(limit)
+          .offset(params[:offset])
+          .where(search)
+          .each do |result|
+            results << {
+              dapil: {
+                id: result.id_dapil,
+                nama: result.nama_dapil
+              },
+              partai: {
+                id: result.id_partai,
+                nama: result.nama_partai
+              },
+              suara_calon_terpilih: result.suara_calon_terpilih,
+              peringkat_suara_calon_terpilih: result.peringkat_suara_calon_terpilih,
+              suara_calon_semua: result.suara_calon_semua,
+              peringkat_suara_calon_semua: result.peringkat_suara_calon_semua,
+              suara_partai: result.suara_partai,
+              peringkat_suara_partai: result.peringkat_suara_partai,
+              jumlah_suara: result.jumlah_suara,
+              peringkat_jumlah_suara: result.peringkat_jumlah_suara,
+            }
+          end
+          {
+            results: {
+              count: results.count,
+              total: get_data_by_province_or_dapil("Dapil", params[:filter], params[:range]).where(search).count,
+              lembaga: 'DPR',
+              tahun: '2014',
+              area: 'dapil',
+              hasil: results
+            }
+          }
+        else
+          if (params[:area].downcase == "provinsi")
+            get_data_by_province_or_dapil("Province", params[:filter], params[:range])
             .limit(limit)
             .offset(params[:offset])
             .each do |result|
@@ -73,12 +100,12 @@ module Pemilu
                 total: get_data_by_province_or_dapil("Province", params[:filter], params[:range]).count,
                 lembaga: 'DPR',
                 tahun: '2014',
-                area: params[:area] || 'dapil',            
+                area: params[:area].downcase,
                 hasil: results
               }
             }
-        elsif ((params[:area].downcase == "dapil" || params[:area].nil?))
-          get_data_by_province_or_dapil("Dapil", params[:filter], params[:range])
+          elsif (params[:area].downcase == "dapil")
+            get_data_by_province_or_dapil("Dapil", params[:filter], params[:range])
             .limit(limit)
             .offset(params[:offset])
             .where(search)
@@ -108,10 +135,22 @@ module Pemilu
                 total: get_data_by_province_or_dapil("Dapil", params[:filter], params[:range]).where(search).count,
                 lembaga: 'DPR',
                 tahun: '2014',
-                area: params[:area] || 'dapil',            
+                area: params[:area].downcase,
                 hasil: results
               }
             }
+          else
+            {
+              results: {
+                count: 0,
+                total: 0,
+                lembaga: 'DPR',
+                tahun: '2014',
+                area: params[:area].downcase,
+                hasil: []
+              }
+            }
+          end
         end
       end
     end
